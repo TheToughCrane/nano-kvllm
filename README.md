@@ -240,8 +240,4 @@ Specifically:
 Some KV-compression methods require query history, so query cache is needed.
 
 For implementation simplicity, this project stores query cache with the same attention head number and mapping scheme as KV cache (shared `slot_mapping` and `block_tables`).  
-<<<<<<< HEAD
 Therefore, **<u>total query blocks must not exceed the number of KV-occupied blocks for current batch sequences, otherwise OOB errors may occur!!!</u>** This is a temporary solution and will be further optimized.
-=======
-Therefore, **<u>total query blocks must not exceed the number of KV-occupied blocks for current batch sequences, otherwise OOB errors may occur!!!</u>** This is a temporary solution and will be further optimized.
->>>>>>> 8a354f8 (Update README file)
