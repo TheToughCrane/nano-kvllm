@@ -1,6 +1,6 @@
 # `nano-kvllm`
 
-> This project integrates **KV Cache Compression** into `nano-vllm` while keeping the original `nano-vllm` code layout **as unchanged as possible**.  
+> `nano-kvllm` integrates **KV Cache Compression** into `nano-vllm` while keeping the original `nano-vllm` code layout **as unchanged as possible**.  
 > The goal of `nano-kvllm` is to enable long-context inference with **lower KV-cache memory usage** and **higher decode throughput**, while maintaining generation quality.
 >
 > Compared with the original `nano-vllm`, this project `nano-kvllm` adds about **100 lines of code** and introduces **2 new files** (`layers/compress_utils.py` and `layers/compress_method.py`).
