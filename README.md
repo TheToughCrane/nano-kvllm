@@ -14,6 +14,8 @@
 > Compared with the original `nano-vllm`, this project `nano-kvllm` adds about **100 lines of code** and introduces **2 new files** (`layers/compress_utils.py` and `layers/compress_method.py`).
 >
 > some project has implement KV compression in nano-vllm before, but a key idea of `nano-kvllm` is to keep the source `nano-vllm` layout minimally modified, so readers can simultaneously understand both the core `nano-vllm` mechanisms and practical KV-compression integration.
+
+**The Code is built upon nano-vllm, I’m deeply grateful for @GeeeekExplorer’s work, which inspired and laid the foundation for nano-KvLLM.**
 ## Quick Start
 
 1. **Implement your own KV compression function** in:
