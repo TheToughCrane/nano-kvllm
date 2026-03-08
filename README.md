@@ -33,7 +33,14 @@ bash examples.sh
 ```python
 print(self.tokenizer.decode(seq.token_ids))
 ```
-
+3. set compress hyper-parameters in nano-kvllm/config.py
+```python
+ kv_compress_enabled: bool = True       
+ kv_compress_N: int = 2                 
+ kv_compress_S: int = kvcache_block_size * (kv_compress_N + 1) -1    
+ kv_compress_R: int = kvcache_block_size * kv_compress_N + 1      
+ num_query_blocks:int = 200
+```
 ### 
 ---
 
