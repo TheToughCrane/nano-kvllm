@@ -136,4 +136,4 @@ Additional updates in `v0.1.5` include:
 
 ## Changelog
 
-See [CHANGELOG.md](./CHANGELOG.md) for version history.
+See [CHANGE_LOG.md](./CHANGE_LOG.md) for version history.
