@@ -1,7 +1,7 @@
 import os
 from transformers import AutoTokenizer
 from KvChat import LLM, SamplingParams
-
+import readline
 
 def main():
     model_path = os.path.expanduser("~/huggingface/Qwen3-8B/")
