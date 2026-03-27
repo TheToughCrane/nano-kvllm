@@ -88,8 +88,8 @@ def MyCompressCompact(query_window_manager, k_cache: torch.Tensor, v_cache: torc
     """
     #Put your KV compress algorihtm here
     # keep_idx= StreamingLLM(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
-    # keep_idx= SnapKV(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
-    keep_idx= StrideKV(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
+    keep_idx= SnapKV(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
+    # keep_idx= StrideKV(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
     if keep_idx is False:
         return False
 
