@@ -3,7 +3,7 @@ from torch import nn
 import triton
 import triton.language as tl
 from KvChat.utils.context import get_context
-from KvChat.layers.CompressMethod import SnapKV
+from KvChat.layers.CompressMethod import SnapKV, StreamingLLM, StrideKV
 
 
 
@@ -87,7 +87,9 @@ def MyCompressCompact(query_window_manager, k_cache: torch.Tensor, v_cache: torc
     Indices should be sorted (time order). If the algorithm does not guarantee it, sort here.
     """
     #Put your KV compress algorihtm here
-    keep_idx= SnapKV(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
+    # keep_idx= StreamingLLM(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
+    # keep_idx= SnapKV(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
+    keep_idx= StrideKV(q_sub, k_sub, v_sub,window = query_window_size,num_keep = R - query_window_size - 1)
     if keep_idx is False:
         return False
 

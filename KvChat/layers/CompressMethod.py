@@ -56,3 +56,79 @@ def SnapKV(Q, K, V, num_keep=220, window=5):
 
     final_idx = torch.cat([bos_idx, base_idx, tail_idx], dim=-1)   # [B, 1 + num_keep + window]
     return final_idx
+
+
+
+def StreamingLLM(Q, K, V, num_keep=220, window=5, **kwargs):
+    """
+    Unified StreamingLLM implementation.
+    Philosophy: [BOS (1)] + [Attention Sinks (num_keep)] + [Local Window (window)]
+    
+    Args:
+        Q, K, V: Attention tensors. K shape is [B, Hk, L, D]
+        num_keep: Number of initial tokens to keep as attention sinks.
+        window: Number of recent tokens to keep for local context fluency.
+        
+    Returns:
+        final_idx: [B, 1 + num_keep + window] containing indices to retain.
+    """
+    B, Hk, L, D = K.shape
+    device = Q.device
+    
+    # Skip compression if the sequence is shorter than the target compressed length
+    if L <= num_keep + window + 1:
+        return False
+        
+    # 1. Absolute BOS Token (Index 0, always kept to stabilize attention denominator)
+    bos_idx = torch.zeros((B, 1), dtype=torch.long, device=device)
+    
+    # 2. Attention Sinks (The initial tokens immediately following BOS)
+    # This represents the "Middle Strategy" for StreamingLLM
+    sink_idx = torch.arange(1, 1 + num_keep, device=device).unsqueeze(0).expand(B, -1)
+    
+    # 3. Local Window (The most recent tokens to maintain syntactic fluency)
+    tail_idx = torch.arange(L - window, L, device=device).unsqueeze(0).expand(B, -1)
+    
+    # Concatenate to form the final indices
+    # Shape guarantee: 1 + num_keep + window
+    final_idx = torch.cat([bos_idx, sink_idx, tail_idx], dim=-1)
+    
+    return final_idx
+
+
+def StrideKV(Q, K, V, num_keep=220, window=5, **kwargs):
+    """
+    Unified StrideKV implementation.
+    Philosophy: [BOS (1)] + [Strided Sampling (num_keep)] + [Local Window (window)]
+    
+    Args:
+        Q, K, V: Attention tensors. K shape is [B, Hk, L, D]
+        num_keep: Number of tokens to uniformly sample from the middle context.
+        window: Number of recent tokens to keep for local context fluency.
+        
+    Returns:
+        final_idx: [B, 1 + num_keep + window] containing indices to retain.
+    """
+    B, Hk, L, D = K.shape
+    device = Q.device
+    
+    # Skip compression if the sequence is shorter than the target compressed length
+    if L <= num_keep + window + 1:
+        return False
+        
+    # 1. Absolute BOS Token (Index 0)
+    bos_idx = torch.zeros((B, 1), dtype=torch.long, device=device)
+    
+    # 2. Local Window (The most recent tokens)
+    tail_idx = torch.arange(L - window, L, device=device).unsqueeze(0).expand(B, -1)
+    
+    # 3. Strided Sampling (The "Middle Strategy" for StrideKV)
+    # Uniformly sample 'num_keep' indices from the middle context: [1, L - window - 1]
+    # Using linspace guarantees the output tensor size is exactly 'num_keep'
+    base_idx = torch.linspace(1, L - window - 1, steps=num_keep, device=device).long().unsqueeze(0).expand(B, -1)
+    
+    # Concatenate to form the final indices
+    # Shape guarantee: 1 + num_keep + window
+    final_idx = torch.cat([bos_idx, base_idx, tail_idx], dim=-1)
+    
+    return final_idx
