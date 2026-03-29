@@ -19,7 +19,7 @@ class Config:
 
     #New properties for KV compression
     kv_compress_enabled: bool = True       #Enable KV-cache compression during decode (prefill is not compressed).
-    kv_compress_N: int = 1                 # This is a compress mechanism tailored for paged attention, which can avoid frequent block allocate&deallocate
+    kv_compress_N: int = 4                 # This is a compress mechanism tailored for paged attention, which can avoid frequent block allocate&deallocate
     kv_compress_S: int = kvcache_block_size * (kv_compress_N + 1) -1     #Compression trigger threshold: sequence KV-context length reaches S and not reach a block's end
     kv_compress_R: int = kvcache_block_size * kv_compress_N + 1       # Retained tokens
     query_window_size: int = 50
