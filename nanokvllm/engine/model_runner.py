@@ -10,7 +10,6 @@ from nanokvllm.models.qwen3 import Qwen3ForCausalLM
 from nanokvllm.layers.sampler import Sampler
 from nanokvllm.utils.context import set_context, get_context, reset_context
 from nanokvllm.utils.loader import load_model
-from nanokvllm.engine.query_window_manager import QueryWindowManager
 
 class ModelRunner:
 
@@ -35,20 +34,7 @@ class ModelRunner:
 
         self.kv_compress_enabled = config.kv_compress_enabled
         if config.kv_compress_enabled:#!!!
-            num_q_heads = hf_config.num_attention_heads // self.world_size
-            head_dim = getattr(hf_config, "head_dim", hf_config.hidden_size // hf_config.num_attention_heads)
-            self.query_window_manager = QueryWindowManager(
-                num_layers=hf_config.num_hidden_layers,
-                window_size=config.query_window_size,
-                num_heads=num_q_heads,
-                head_dim=head_dim,
-                device="cuda",
-                dtype=hf_config.torch_dtype,
-            )
-            for module in self.model.modules():
-                if hasattr(module, "k_cache") and hasattr(module, "v_cache"):
-                    module.query_window_manager = self.query_window_manager
-
+            self.decode_step_counter = 0
 
         if not self.enforce_eager:
             self.capture_cudagraph()
@@ -190,7 +176,6 @@ class ModelRunner:
         for seq in seqs:
             input_ids.append(seq.last_token)
             
-            # positions.append(len(seq) - 1)#
             positions.append(seq.rope_pos)
             # Use `rope_pos` (monotonically increasing, true decode position for RoPE) instead of `len(seq)-1`.
             # KV compression changes the *KV context length* (e.g., S -> R), but RoPE positions must reflect the
@@ -210,7 +195,47 @@ class ModelRunner:
         # Store the decision in the global Context so each Attention layer can: (if needed) compact/compress KV right after store and before flash-attn reads it.
 
         if self.kv_compress_enabled:
-            self.prepare_for_compress(seqs,context_lens)
+            ctx = get_context()
+            # old per-step threshold-trigger compression mask is no longer used as primary trigger
+            ctx.compress_need_mask = None
+            ctx.compress_any = False
+
+            # -------- periodic compression scheduling --------
+            B = self.block_size
+            window_blocks = self.config.kv_compress_window_blocks
+            window_tokens = window_blocks * B
+            topk = self.config.kv_compress_topk
+
+            self.decode_step_counter += 1
+            is_compress_step = (self.decode_step_counter % self.config.kv_compress_period == 0)
+
+            selected_batch_indices = []
+            selected_seq_ids = []
+
+            if is_compress_step:
+                candidates = []
+                for i, seq in enumerate(seqs):
+                    current_context_len = len(seq)   # current cache length
+                    full_blocks = current_context_len // B
+                    tail_len = current_context_len % B
+
+                    if tail_len == B - 1:
+                        continue
+                    elif seq.tail_uncompressed_len >= window_tokens and full_blocks >= window_blocks:
+                        candidates.append((i, seq.seq_id))
+
+                # print(candidates,self.decode_step_counter,full_blocks,current_context_len,"model runner")
+                selected = candidates[:topk]
+                selected_batch_indices = [x[0] for x in selected]
+                selected_seq_ids = [x[1] for x in selected]
+
+            ctx.is_compress_step = is_compress_step
+            ctx.compress_selected_batch_indices = selected_batch_indices
+            ctx.compress_selected_seq_ids = selected_seq_ids
+            if is_compress_step and selected_batch_indices:
+                ctx.compress_base_context_lens = context_lens.clone()
+            else:
+                ctx.compress_base_context_lens = None
         return input_ids, positions
 
     def prepare_sample(self, seqs: list[Sequence]):
@@ -294,30 +319,3 @@ class ModelRunner:
             block_tables=block_tables,
             outputs=outputs,
         )
-    def prepare_for_compress(self,seqs,context_lens):
-        need_mask = (context_lens ==  self.config.kv_compress_S).cpu()
-        ctx = get_context()
-        ctx.compress_need_mask = need_mask.tolist()
-        ctx.compress_any = any(ctx.compress_need_mask)
-
-        #Query Window 2.0
-        W = self.config.query_window_size
-        S = self.config.kv_compress_S
-        q_window_active_indices = []
-        q_window_active_seq_ids = []
-        seq_ids = []
-        for i, seq in enumerate(seqs):
-            seq_ids.append(seq.seq_id)
-            L = len(seq)
-            active = (L > S - W) and (L <= S)
-            if active:
-                q_window_active_indices.append(i)
-                q_window_active_seq_ids.append(seq.seq_id)
-                # only activate once when the seq first enters [S-W, S)
-                if not self.query_window_manager.has(seq.seq_id):
-                    self.query_window_manager.activate(seq.seq_id)
-            elif self.query_window_manager.has(seq.seq_id):
-                self.query_window_manager.free(seq.seq_id)
-        ctx.q_window_active_indices = q_window_active_indices
-        ctx.q_window_active_seq_ids = q_window_active_seq_ids
-        ctx.seq_ids = seq_ids

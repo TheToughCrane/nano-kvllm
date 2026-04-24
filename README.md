@@ -1,8 +1,10 @@
-# `nano-kvllm v0.1.5`
+# `nano-kvllm v0.2.0`
 
 <p align="center">
   <img src="assets/logo.png" alt="nano-kvllm logo" width="350"/>
 </p>
+
+**Here comes version 2.0!**
 
 **KvLLM** is an **AI/LLM inference framework** built on top of `nano-vllm`, focused on efficient KV-cache memory management for large language models.  
 The current release lands **KV-cache compression** in a lightweight research-and-development framework, aiming to improve inference efficiency in **high-concurrency** and **long-context generation** scenarios by alleviating the KV-cache memory bottleneck.
@@ -14,6 +16,47 @@ In the coming weeks, **KvLLM** will continue integrating frontier KV-cache manag
 - **KV-cache retrieval**
 
 to form a more complete and practical memory-management stack for LLM serving.
+
+---
+
+# What’s New in `nano-kvllm v0.2.0`
+## Motivation
+
+Current mainstream KV cache compression (sparsification) methods mostly rely on a **threshold-triggered compression mechanism**: once the KV cache length of a sequence reaches a predefined threshold, compression is triggered.
+This design may be friendly for single-user deployment or agent-style scenarios, but it has several critical drawbacks:
+1. **Compression may affect system prompt KV cache** 
+   Since the compression mechanism operates on whole historical KV cache, it may prune cache entries corresponding to the system prompt, which can negatively affect generation quality.
+2. **Compression overhead can hurt throughput under high batch size**  
+   In high-concurrency scenarios, nearly every request may trigger a compression event at every decode step, which can actually reduce output throughput instead of improving it.
+---
+## Method
+KvLLM 2.0 introduces a **window-based + periodic compression mechanism**.
+Specifically:
+- We start counting decode steps globally from the beginning.
+- Every fixed number of decode steps (e.g., every 1024 decode steps globally), we trigger compression.
+- At each compression step, we select the **Top-K** sequences.
+- For each selected sequence, we treat its **last 4 blocks** as a compression window.
+- These blocks are guaranteed to be **uncompressed**.
+- We use the **latest token's query** to compute attention scores, select and preserve the important KV pairs, and then perform **memory compaction** and **metadata updates**.
+---
+## Advantages
+### Window-based compression
+The blocks inside the compression window are guaranteed to be **uncompressed blocks**, which avoids repeatedly compressing already-compressed content and helps preserve generation quality.
+### Periodic compression
+Periodic compression controls when compression events happen, avoiding too many requests compressing at the same time. This can effectively improve output throughput in high-concurrency scenarios.
+
+## Experiments
+
+We ran experiments on the **Math500** dataset with:
+
+- **Batch size**: 500 (all samples are fed at once)
+- **Compression period**: 1024
+- **Number of compressed sequences**: 20
+- **Compression ratio**: 50%
+
+The output throughput improved by **10%**:
+
+- **2000 tok/s → 2200 tok/s**
 
 ---
 
@@ -71,61 +114,14 @@ It provides a compact and practical research framework for landing KV-cache comp
 
 Developers can use it to:
 
-1. **Implement and rapidly validate KV-cache compression algorithms**
-2. Further explore and extend **other KV-cache memory-management techniques**
+1. Further improve output throughput in large-batch serving
+2. **Implement and rapidly validate KV-cache compression algorithms**
+3. Further explore and extend **other KV-cache memory-management techniques**
 
-The current release is **nano-kvllm v0.1.5**.  
-For earlier versions, please refer to **v0.1.0**.
-
----
-
-# What’s New in `nano-kvllm v0.1.5`
-
-## 1. `query_window_manager`
-In `v0.1.0`, query cache was stored in a more global/block-style manner, which could lead to unnecessary memory overhead.
-
-In `v0.1.5`, we introduce **`query_window_manager.py`**:
-
-- Query cache is only stored when a sequence enters the compression window
-- Only a small recent query window is kept
-- Query cache is released after compression
-
-This design significantly reduces wasted memory usage.
-
-> Note: Most KV-cache compression algorithms require only a small amount of recent query cache, not the full-sequence query history.
+The current release is **nano-kvllm v0.2.0**.  
+For earlier versions, please refer to **v0.1.0** and **v0.1.5**.
 
 ---
-
-## 2. Graph-mode-aware compression
-CUDA graph mode in vLLM-style systems can reduce kernel launch overhead and often improve decode throughput substantially.  
-However, graph mode also increases memory usage, especially in **high-concurrency** and **long-context** scenarios.
-
-`nano-kvllm v0.1.5` supports a practical compromise:
-
-- **Enable graph mode on non-compression decode steps**
-- **Disable graph mode on compression steps**
-
-This makes it possible to preserve most of the graph-mode speedup while still allowing online KV-cache compression, improving overall decode efficiency under memory pressure.
-
----
-
-## 3. Recompute compatibility after compression
-In `v0.1.0`, recomputation after sequence compression could fail because during `prepare_prefill`, the logical sequence state and the input token reconstruction path could become inconsistent.
-
-In `v0.1.5`, this is addressed by:
-
-- resetting `num_tokens` during recomputation-related preemption handling (`scheduler.py::preempt`)
-- passing full `token_ids` during sequence serialization
-
-This improves robustness when compressed sequences are later recomputed.
-
----
-
-## 4. Other improvements
-Additional updates in `v0.1.5` include:
-
-- removing the Triton-based KV compact implementation and falling back to a more stable Torch implementation
-- improving overall code readability and maintainability
 
 # Project Structure
 

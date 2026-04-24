@@ -15,9 +15,10 @@ class Context:
     compress_need_mask: list | None = None   # newly add: python list or cpu BoolTensor
     compress_any: bool = False 
 
-    seq_ids: list[int] | None = None
-    q_window_active_indices: list | None = None
-    q_window_active_seq_ids: list[int] | None = None
+    is_compress_step: bool = False
+    compress_selected_batch_indices: list | None = None
+    compress_selected_seq_ids: list[int] | None = None
+    compress_base_context_lens: torch.Tensor | None = None  
 _CONTEXT = Context()
 
 def get_context():
@@ -29,9 +30,10 @@ def set_context(is_prefill, cu_seqlens_q=None, cu_seqlens_k=None, max_seqlen_q=0
                        compression_events=[],    
                        compress_need_mask=None,
                        compress_any=False,
-                       seq_ids=None,
-                       q_window_active_indices = None,
-                       q_window_active_seq_ids = None)
+                        is_compress_step=False,
+                        compress_selected_batch_indices=None,
+                        compress_selected_seq_ids=None,
+                        compress_base_context_lens=None)
 
 def reset_context():
     global _CONTEXT

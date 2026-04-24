@@ -5,7 +5,7 @@ import triton.language as tl
 import os
 from flash_attn import flash_attn_varlen_func, flash_attn_with_kvcache
 from nanokvllm.utils.context import get_context
-from nanokvllm.layers.compress_utils import MyCompressCompact,store_qkvcache
+from nanokvllm.layers.compress_utils import MyCompressCompact
 
 @triton.jit
 def store_kvcache_kernel(
@@ -58,13 +58,11 @@ class Attention(nn.Module):
         self.k_cache = self.v_cache = torch.tensor([])
 
         self.kv_compress_enabled = vllm_config.kv_compress_enabled
-        self.kv_compress_N = vllm_config.kv_compress_N
-        self.kv_compress_S = vllm_config.kv_compress_S
-        self.kv_compress_R = vllm_config.kv_compress_R
         if self.kv_compress_enabled:
-            self.query_window_manager = None
-            self.query_window_size = vllm_config.query_window_size
             self.num_layers = num_layers
+            self.kv_compress_window_blocks = vllm_config.kv_compress_window_blocks
+            self.kv_compress_keep_blocks = vllm_config.kv_compress_keep_blocks
+            self.kv_compress_keep_extra_tokens = vllm_config.kv_compress_keep_extra_tokens
 
     def forward(self, q: torch.Tensor, k: torch.Tensor, v: torch.Tensor, Layer):
 
@@ -74,32 +72,25 @@ class Attention(nn.Module):
         if k_cache.numel() and v_cache.numel():
             store_kvcache(k, v, k_cache, v_cache, context.slot_mapping)
  
-            # if k_cache.get_device() == 0 and Layer == 3:
-            #     print(context.slot_mapping,context.block_tables,context.context_lens)
 
-        if not context.is_prefill and self.kv_compress_enabled and context.compress_any:
-            if self.query_window_manager is not None:
-                active_indices = context.q_window_active_indices
-                active_seq_ids = context.q_window_active_seq_ids
-                if active_indices:
-                    idx_tensor = torch.tensor(active_indices, device=q.device, dtype=torch.long)
-                    q_active = q.index_select(0, idx_tensor)  # [m, q_heads, head_dim]
-                    self.query_window_manager.append(active_seq_ids, Layer, q_active)
-            
-            if context.compress_any:
-                """we only compress kv cache in decode phase"""
-                MyCompressCompact(
-                    query_window_manager=self.query_window_manager,
-                    k_cache=k_cache,
-                    v_cache=v_cache,
-                    layer_id=Layer,
-                    block_size=k_cache.size(1),
-                    S=self.kv_compress_S,
-                    R=self.kv_compress_R,
-                    query_window_size = self.query_window_size,
-                    context = context,
-                    num_layers = self.num_layers
-                )            
+        if (
+            (not context.is_prefill)
+            and self.kv_compress_enabled
+            and context.is_compress_step
+            and context.compress_selected_batch_indices
+            ):
+            MyCompressCompact(
+                q_current=q,
+                k_cache=k_cache,
+                v_cache=v_cache,
+                layer_id=Layer,
+                block_size=k_cache.size(1),
+                window_blocks=self.kv_compress_window_blocks,
+                keep_blocks=self.kv_compress_keep_blocks,
+                keep_extra_tokens=self.kv_compress_keep_extra_tokens,
+                num_layers=self.num_layers,
+                context=context
+            )   
 
         if context.is_prefill:
             if context.block_tables is not None:    # prefix cache

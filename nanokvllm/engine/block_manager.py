@@ -112,6 +112,8 @@ class BlockManager:
         else:
             assert last_block.hash == -1
 
+
+
     def truncate_blocks(self, seq: Sequence, keep_blocks: int):
         """
         Release blocks in seq.block_table beyond keep_blocks.
@@ -119,7 +121,7 @@ class BlockManager:
         """
         if keep_blocks >= len(seq.block_table):
             return
-        # free tail blocks
+  
         tail = seq.block_table[keep_blocks:]
         for block_id in reversed(tail):
             block = self.blocks[block_id]
@@ -133,8 +135,4 @@ class BlockManager:
         if seq.block_table:
             last_block_id = seq.block_table[-1]
             last_block = self.blocks[last_block_id]
-            #the new last block now just cached one token(according to our compress trigger mechanism)
-            #and maybe this block is  full before compress, so we have to change its hash to -1
-            if last_block.hash != -1:
-                last_block.hash = -1
-        
+            last_block.hash = -1

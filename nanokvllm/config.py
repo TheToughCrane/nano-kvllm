@@ -19,11 +19,11 @@ class Config:
 
     #New properties for KV compression
     kv_compress_enabled: bool = True       #Enable KV-cache compression during decode (prefill is not compressed).
-    kv_compress_N: int = 3                 # This is a compress mechanism tailored for paged attention, which can avoid frequent block allocate&deallocate
-    kv_compress_S: int = kvcache_block_size * (kv_compress_N + 1) -1     #Compression trigger threshold: sequence KV-context length reaches S and not reach a block's end
-    kv_compress_R: int = kvcache_block_size * kv_compress_N + 1       # Retained tokens
-    query_window_size: int = 30 #used for SnapKV compress algorithm
-
+    kv_compress_period: int = 1024
+    kv_compress_topk: int = 20
+    kv_compress_window_blocks: int = 4
+    kv_compress_keep_blocks: int = 2
+    kv_compress_keep_extra_tokens: int = 1
     def __post_init__(self):
         assert os.path.isdir(self.model)
         assert self.kvcache_block_size % 256 == 0

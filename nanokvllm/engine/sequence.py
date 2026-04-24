@@ -30,6 +30,7 @@ class Sequence:
 
         self.generated_completion_tokens = 0
         self.rope_pos = self.num_tokens - 1
+        self.tail_uncompressed_len = 0
     def __len__(self):
         return self.num_tokens
 
@@ -75,7 +76,7 @@ class Sequence:
         
         self.generated_completion_tokens += 1
         self.rope_pos += 1
-        self.need_recompute = False
+        self.tail_uncompressed_len += 1
     def __getstate__(self):
 
         return {
@@ -88,6 +89,7 @@ class Sequence:
             "generated_completion_tokens": getattr(self, "generated_completion_tokens", 0),
             "rope_pos": getattr(self, "rope_pos", self.num_tokens - 1),
             "seq_id": getattr(self, "seq_id", None),#!!!新增
+            "tail_uncompressed_len": getattr(self, "tail_uncompressed_len", 0),
         }
 
     def __setstate__(self, state):
@@ -116,5 +118,5 @@ class Sequence:
             self.token_ids = [self.last_token]
         self.generated_completion_tokens = state.get("generated_completion_tokens", 0)
         self.rope_pos = state.get("rope_pos", self.num_tokens - 1)
-
         self.seq_id = state.get("seq_id", None)#!!!新增
+        self.tail_uncompressed_len = state.get("tail_uncompressed_len", 0)

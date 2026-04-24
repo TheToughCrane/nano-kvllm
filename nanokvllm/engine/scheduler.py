@@ -62,34 +62,45 @@ class Scheduler:
 
     def preempt(self, seq: Sequence):
         seq.status = SequenceStatus.WAITING
-
+        
+        
         # restore logical sequence length before recompute
         seq.num_tokens = len(seq.token_ids)
         if len(seq.token_ids) > 0:
             seq.last_token = seq.token_ids[-1]
         self.block_manager.deallocate(seq)
         self.waiting.appendleft(seq)
-
+        
     def postprocess(self, seqs: list[Sequence], token_ids: list[int], compression_events: list | None = None) -> list[bool]:
-
         if compression_events:
-            #if compressed, we need to free blocks beyond R (truncate_blocks())
-            #and set seq.num_tokens as R
-            #Note: we use "rope_pos" in model_runner.py variable to denote positions variable RoPE, which is the actual seq len. 
+            # Deduplicate by batch_index: only keep the last event for each seq
+            dedup = {}
             for ev in compression_events:
                 bidx = ev["batch_index"]
-                if bidx < 0 or bidx >= len(seqs):
-                    continue
-                seq = seqs[bidx]
-                R = ev["R"]
-                keep_blocks = ev["keep_blocks"]
-                self.block_manager.truncate_blocks(seq, keep_blocks)
-                seq.num_tokens = R
+                if 0 <= bidx < len(seqs):
+                    dedup[bidx] = ev
 
+            for bidx, ev in dedup.items():
+                seq = seqs[bidx]
+
+                new_context_len = ev["new_context_len"]
+                keep_blocks = ev["keep_blocks"]
+
+                self.block_manager.truncate_blocks(seq, keep_blocks)
+
+                # num_tokens still denotes current cache length in your current design
+                seq.num_tokens = new_context_len
+
+                # periodic compression: reset newly-grown-token counter
+                seq.tail_uncompressed_len = ev.get("tail_uncompressed_len_after", 0)
+        
+        
+       
+        
         for seq, token_id in zip(seqs, token_ids):
             seq.append_token(token_id)
             # print(self.tokenizer.decode(seq.token_ids))
-            if (not seq.ignore_eos and token_id == self.eos) or seq.generated_completion_tokens == seq.max_tokens:
+            if (not seq.ignore_eos and token_id == self.eos) or seq.generated_completion_tokens >= seq.max_tokens:
                 seq.status = SequenceStatus.FINISHED
                 self.block_manager.deallocate(seq)
                 self.running.remove(seq)

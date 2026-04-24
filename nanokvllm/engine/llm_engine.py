@@ -42,6 +42,7 @@ class LLMEngine:
     def add_request(self, prompt: str | list[int], sampling_params: SamplingParams):
         if isinstance(prompt, str):
             prompt = self.tokenizer.encode(prompt)
+        # print("prompt len is",len(prompt))
         seq = Sequence(prompt, sampling_params)
         self.scheduler.add(seq)
     def step(self):
@@ -90,8 +91,6 @@ class LLMEngine:
                     torch.cuda.synchronize()
                     decode_throughput = -num_tokens / (perf_counter() - t)
 
-
-                # 新增：只在 decode step 累加
                 decode_tp_sum += decode_throughput
                 decode_tp_steps += 1
 

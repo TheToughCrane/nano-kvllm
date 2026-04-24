@@ -1,4 +1,4 @@
-# `nano-kvllm v0.1.0`
+# `basic introduction of nano-kvllm v0.1.0`
 ## Table of Contents
 
 - [Quick Start](#quick-start)
@@ -241,3 +241,50 @@ Some KV-compression methods require query history, so query cache is needed.
 
 For implementation simplicity, this project stores query cache with the same attention head number and mapping scheme as KV cache (shared `slot_mapping` and `block_tables`).  
 Therefore, **<u>total query blocks must not exceed the number of KV-occupied blocks for current batch sequences, otherwise OOB errors may occur!!!</u>** This is a temporary solution and will be further optimized.
+
+# What’s New in `nano-kvllm v0.1.5`
+## 1. `query_window_manager`
+In `v0.1.0`, query cache was stored in a more global/block-style manner, which could lead to unnecessary memory overhead.
+
+In `v0.1.5`, we introduce **`query_window_manager.py`**:
+
+- Query cache is only stored when a sequence enters the compression window
+- Only a small recent query window is kept
+- Query cache is released after compression
+
+This design significantly reduces wasted memory usage.
+
+> Note: Most KV-cache compression algorithms require only a small amount of recent query cache, not the full-sequence query history.
+
+---
+
+## 2. Graph-mode-aware compression
+CUDA graph mode in vLLM-style systems can reduce kernel launch overhead and often improve decode throughput substantially.  
+However, graph mode also increases memory usage, especially in **high-concurrency** and **long-context** scenarios.
+
+`nano-kvllm v0.1.5` supports a practical compromise:
+
+- **Enable graph mode on non-compression decode steps**
+- **Disable graph mode on compression steps**
+
+This makes it possible to preserve most of the graph-mode speedup while still allowing online KV-cache compression, improving overall decode efficiency under memory pressure.
+
+---
+
+## 3. Recompute compatibility after compression
+In `v0.1.0`, recomputation after sequence compression could fail because during `prepare_prefill`, the logical sequence state and the input token reconstruction path could become inconsistent.
+
+In `v0.1.5`, this is addressed by:
+
+- resetting `num_tokens` during recomputation-related preemption handling (`scheduler.py::preempt`)
+- passing full `token_ids` during sequence serialization
+
+This improves robustness when compressed sequences are later recomputed.
+
+---
+
+## 4. Other improvements
+Additional updates in `v0.1.5` include:
+
+- removing the Triton-based KV compact implementation and falling back to a more stable Torch implementation
+- improving overall code readability and maintainability
